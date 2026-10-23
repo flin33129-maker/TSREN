@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>磁盘可见性 · 深空工作站</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#0b0b12;--card:#15151f;--line:#2a2a3a;--txt:#e8e8f0;--dim:#8a8aa0;--accent:#7C6EFA;--warn:#f59e0b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;padding:32px}
+.wrap{max-width:880px;margin:auto}h1{font-size:20px;margin:0 0 6px}p.d{color:var(--dim);margin:0 0 22px}
+.r{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:10px}
+.n{flex:1}.k{color:var(--dim);font-size:12px;margin-top:2px}
+.t{font-size:12px;padding:3px 10px;border-radius:999px;background:#1e1e2e;color:var(--dim)}
+.t.h{background:rgba(245,158,11,.15);color:var(--warn)}
+button{cursor:pointer;border:1px solid var(--line);background:#1b1b28;color:var(--txt);padding:7px 14px;border-radius:8px;font-size:13px}
+button:hover{border-color:var(--accent)}button:disabled{opacity:.4;cursor:not-allowed}
+.m{margin-top:18px;color:var(--dim)}
+</style></head><body><div class="wrap">
+<h1>磁盘可见性管理</h1>
+<p class="d">隐藏后：普通用户在文件面板 / WebDAV / FTP / S3 / NFS 中均不可见，直接访问返回 403。管理员始终可见。内置盘（公共盘/私人空间）不可隐藏。</p>
+<div id="l"></div><div class="m" id="m"></div></div>
+<script>
+(async function(){
+  var M=document.getElementById('m'), L=document.getElementById('l');
+  async function J(u,o){var r=await fetch(u,Object.assign({credentials:'include'},o||{}));var d={};try{d=await r.json()}catch(e){}return{c:r.status,d:d}}
+  async function load(){
+    var me=await J('/api/me'); var u=(me.d&&(me.d.user||me.d))||null;
+    if(!u||u.role!=='admin'){L.innerHTML='';M.textContent='需要管理员权限：请先用 Dozin 登录（未登录请先访问首页）。';return}
+    var r=await J('/api/admin/disks');
+    if(r.c!==200){M.textContent='加载失败：'+(r.d.error||r.c);return}
+    M.textContent='';L.innerHTML='';
+    (r.d.disks||[]).forEach(function(d){
+      var bi=(d.id==='public'||d.id==='private');
+      var row=document.createElement('div');row.className='r';
+      var n=document.createElement('div');n.className='n';n.textContent=d.name;
+      var k=document.createElement('div');k.className='k';k.textContent=d.id+' · '+(d.kind==='external'?'外置盘':'内置盘');n.appendChild(k);
+      var t=document.createElement('span');t.className='t'+(d.hidden?' h':'');t.textContent=d.hidden?'已隐藏':'可见';
+      var b=document.createElement('button');b.textContent=bi?'内置盘':(d.hidden?'恢复显示':'隐藏');b.disabled=bi;
+      b.onclick=async function(){b.disabled=true;var res=await J('/api/admin/disks/visibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({diskId:d.id,hidden:!d.hidden})});b.disabled=false;if(res.c===200){load()}else{M.textContent='操作失败：'+(res.d.error||res.c)}};
+      row.appendChild(n);row.appendChild(t);row.appendChild(b);L.appendChild(row);
+    });
+  }
+  load();
+})();
+</script><a id="r15-new-entry" href="/app/" style="position:fixed;right:18px;bottom:18px;z-index:2147483000;display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;background:linear-gradient(140deg,#8b6cf0,#6d4fd8);color:#fff;font:600 13px/1 'Segoe UI','Microsoft YaHei',sans-serif;text-decoration:none;box-shadow:0 8px 24px rgba(90,60,200,.45)"><span style="width:8px;height:8px;border-radius:50%;background:#57e2a3;display:inline-block"></span>R15 新版工作站 · 点此进入</a>
+</body></html>

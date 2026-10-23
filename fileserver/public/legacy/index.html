@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#061019">
+<title>深空工作站 · 局域网协作中枢</title>
+<script>
+/* 基址自愈：若地址栏是 //host//path 形式，浏览器会把 <base> 视作协议相对地址，
+   使 src="/x.js" 解析成 //x.js（跨域被拒），整页脚本全部不执行 → 白屏。
+   这里在任何外链资源之前把重复斜杠折叠掉，随后重载一次。 */
+(function () {
+  try {
+    var p = location.pathname;
+    if (/\/{2,}/.test(p)) {
+      var clean = p.replace(/\/{2,}/g, '/');
+      location.replace(location.origin + clean + location.search + location.hash);
+    }
+  } catch (e) { /* 忽略：不影响后续加载 */ }
+})();
+</script>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/auth.css">
+<link rel="stylesheet" href="/station.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<div class="app app-shell">
+
+  <!-- ============ 顶栏：工作站主导航（桌面/移动共用，<1080 收敛为汉堡+标题） ============ -->
+  <header class="topnav">
+    <div class="tn-brand">
+      <!-- 汉堡：仅 <1080 显示（CSS 控制），点击开导航抽屉。
+           原先带 hidden 属性却被 .icon-btn{display:inline-flex} 覆盖 → 桌面端也是一个 32px 空方块 -->
+      <button class="icon-btn tn-burger" id="tnBurger" title="导航菜单" aria-label="打开导航菜单"></button>
+      <span class="logo">◈</span>
+      <span class="tn-title">深空工作站</span>
+    </div>
+    <nav class="tn-nav" id="tnNav">
+      <!-- shell.js 注入模块入口 -->
+    </nav>
+    <div class="tn-side">
+      <!-- NAS 存储条：存储余量常驻可见（shell.js 注入，点击进文件页） -->
+      <span id="tnNas" class="tn-nas" hidden></span>
+      <button class="icon-btn" id="themeBtn" title="切换深浅主题"></button>
+      <span id="userArea"></span>
+      <!-- 状态药丸：在线设备/进行中任务（shell.js 注入） -->
+      <span id="tnPill"></span>
+    </div>
+  </header>
+
+  <!-- ============ 模块容器：一次只显示一个 ============ -->
+  <main class="shell-main">
+
+    <!-- ──────── 模块：总览（默认首页）──────── -->
+    <section class="module" id="mod-home" data-route="/">
+      <div class="mod-head">
+        <h1 class="mod-title">总览</h1>
+        <span class="mod-sub">全局状态 · 实时链路</span>
+      </div>
+      <div class="mod-body">
+        <div id="homeDash"></div>
+      </div>
+    </section>
+
+    <!-- ──────── 模块：文件 NAS（原「深海文件站」降级为子模块）──────── -->
+    <section class="module" id="mod-files" data-route="/files" hidden>
+      <div class="files-layout">
+        <!-- 模块内窄侧栏：盘符 + 文件操作入口 -->
+        <aside class="files-rail">
+          <div class="fr-section">
+            <div class="fr-label">存储位置</div>
+            <nav class="sb-disks" id="diskBar"></nav>
+          </div>
+          <div class="fr-section fr-foot">
+            <button class="fr-link" id="railMore" title="文件工具（回收站/共享/检索/去重/定时）">▦ 文件工具</button>
+          </div>
+        </aside>
+        <div class="files-main">
+          <!-- 移动端盘符滚动条（<1080 时 rail 隐藏、此条显示） -->
+          <nav class="disks-m" id="diskBarM"></nav>
+
+          <!-- 原概览仪表盘（仅在根目录显示） -->
+          <section class="dash" id="dash" hidden>
+            <div class="dash-head">
+              <h2 class="dash-title">概览</h2>
+              <button class="dash-toggle" id="dashToggle" title="收起/展开概览">收起</button>
+            </div>
+            <div class="dash-grid" id="dashGrid"></div>
+          </section>
+
+          <div class="toolbar">
+            <div class="search">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <input type="search" id="searchInput" placeholder="搜索文件…" autocomplete="off">
+            </div>
+            <nav class="breadcrumb" id="breadcrumb"></nav>
+            <div class="actions">
+              <button id="btnUpload" class="btn primary">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+                <span>上传</span>
+              </button>
+              <button id="btnMkdir" class="btn">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/><path d="M12 11v5m-2.5-2.5h5"/></svg>
+                <span>新建</span>
+              </button>
+              <button id="btnView" class="btn icon-only" title="切换 列表/网格 视图"></button>
+              <button id="btnMore" class="btn icon-only" title="文件工具（回收站/共享/任务/健康/检索/去重/审计）">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+              </button>
+              <button id="btnRefresh" class="btn icon-only" title="刷新">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11A8 8 0 106.3 6.3L4 8.5"/><path d="M4 4v4.5h4.5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 类型快速筛选 -->
+          <nav class="typebar" id="typeBar">
+            <button class="tchip on" data-type="all">全部</button>
+            <button class="tchip" data-type="image">🖼 图片</button>
+            <button class="tchip" data-type="video">🎬 视频</button>
+            <button class="tchip" data-type="audio">🎵 音频</button>
+            <button class="tchip" data-type="doc">📄 文档</button>
+            <button class="tchip" data-type="archive">📦 压缩包</button>
+            <span class="tchip-count" id="typeCount"></span>
+          </nav>
+
+          <div class="panel" id="dropzone">
+            <div class="hint" id="hint"></div>
+            <div class="list-head">
+              <div class="col-check"><input type="checkbox" id="selAll" title="全选"></div>
+              <div class="col-name sort" data-sort="name">名称<span class="sort-ind"></span></div>
+              <div class="col-size sort" data-sort="size">大小<span class="sort-ind"></span></div>
+              <div class="col-time sort" data-sort="mtime">修改时间<span class="sort-ind"></span></div>
+              <div class="col-ops"></div>
+            </div>
+            <div class="list-body list" id="fileList"></div>
+            <div class="empty" id="empty" hidden>
+              <svg class="empty-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+              <div id="emptyText">这个目录还是空的</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="droplayer" id="droplayer"><div>松开即可上传到当前目录</div></div>
+    </section>
+
+    <!-- ──────── 模块：AI 助手（一级模块）──────── -->
+    <section class="module" id="mod-ai" data-route="/ai" hidden>
+      <div class="mod-head">
+        <h1 class="mod-title">AI 助手</h1>
+        <span class="mod-sub">本地推理 · 局域网对话</span>
+      </div>
+      <div class="mod-body" id="aiHost"><!-- station.js renderAI 注入 --></div>
+    </section>
+
+    <!-- ──────── 模块：协同（设备/任务/控制/同步/协同板）──────── -->
+    <section class="module" id="mod-collab" data-route="/collab" hidden>
+      <div class="mod-head">
+        <h1 class="mod-title">协同</h1>
+        <span class="mod-sub">设备 · 任务 · 远程控制 · 协同板 · 同步</span>
+      </div>
+      <div class="mod-body" id="collabHost"><!-- station.js 注入二级 tab --></div>
+    </section>
+
+    <!-- ──────── 模块：事件流 ──────── -->
+    <section class="module" id="mod-events" data-route="/events" hidden>
+      <div class="mod-head">
+        <h1 class="mod-title">事件流</h1>
+        <span class="mod-sub">全部频道 · 实时</span>
+      </div>
+      <div class="mod-body" id="eventsHost"><!-- station.js renderEvents 注入 --></div>
+    </section>
+
+    <!-- ──────── 模块：系统 ──────── -->
+    <section class="module" id="mod-tools" data-route="/tools" hidden>
+      <div class="mod-head">
+        <h1 class="mod-title">系统</h1>
+        <span class="mod-sub">健康 · 审计 · 安全 · 运维 · 诊断</span>
+      </div>
+      <div class="mod-body" id="toolsHost"><!-- shell.js 注入工具卡片区 --></div>
+    </section>
+
+  </main>
+
+  <!-- ──────── 模块：作品 ──────── -->
+  <section class="module" id="mod-work" data-route="/work" hidden>
+    <div class="mod-head">
+      <div class="mod-title">作品</div>
+      <div class="mod-sub">自研小工具与游戏 · 全部离线可用</div>
+    </div>
+    <div class="mod-body" id="workBody"><!-- shell.js buildWork 注入卡片网格 --></div>
+  </section>
+
+  <!-- 移动端底部标签栏（<1080 显示） -->
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+
+<input type="file" id="fileInput" multiple hidden>
+
+<!-- 批量操作条 -->
+<div class="bulkbar" id="bulkBar" hidden>
+  <span class="bb-txt">已选 <b id="bulkCount">0</b> 项</span>
+  <button id="bulkZip" class="bb-btn">打包下载</button>
+  <button id="bulkMove" class="bb-btn">移动到…</button>
+  <button id="bulkCopy" class="bb-btn">复制到…</button>
+  <button id="bulkDel" class="bb-btn danger">删除</button>
+  <button id="bulkCancel" class="bb-btn ghost">取消</button>
+</div>
+
+<!-- 任务中心 -->
+<div class="taskbar" id="taskbar" hidden>
+  <div class="taskbar-head">
+    <span>传输任务</span>
+    <span class="taskbar-count" id="taskCount">0</span>
+    <button id="taskClear" class="link-btn">清空</button>
+  </div>
+  <div class="taskbar-body" id="taskBody"></div>
+</div>
+
+<!-- 在线预览 -->
+<div class="modal preview-modal" id="previewModal" hidden>
+  <div class="preview-box">
+    <div class="preview-head">
+      <span class="p-ic" id="pvIcon">📄</span>
+      <div class="p-meta">
+        <div class="p-name" id="pvName"></div>
+        <div class="p-sub" id="pvSub"></div>
+      </div>
+      <button class="p-btn" id="pvInfo" title="文件信息">ⓘ</button>
+      <a class="p-btn" id="pvDownload" title="下载" download>⬇</a>
+      <button class="p-btn" id="pvClose" title="关闭 (Esc)">✕</button>
+    </div>
+    <div class="preview-body" id="pvBody"></div>
+    <div class="preview-info" id="pvInfoBox" hidden></div>
+  </div>
+</div>
+
+<!-- 登录 / 注册（v4 重设计：深海工业风，保留全部 JS 依赖 ID） -->
+<div class="modal" id="authModal" hidden>
+  <div class="au-card">
+    <aside class="au-brand">
+      <canvas class="au-canvas" id="auCanvas" aria-hidden="true"></canvas>
+      <div class="au-brand-inner">
+        <div class="au-logo">◈</div>
+        <h2 class="au-title">深空工作站</h2>
+        <p class="au-sub">DEEP-SPACE STATION · v5</p>
+        <div class="au-chips">
+          <span class="au-chip">WEBDAV</span><span class="au-chip">S3</span><span class="au-chip">NFS</span>
+          <span class="au-chip">SMB</span><span class="au-chip">DLNA</span><span class="au-chip">FTP</span>
+        </div>
+        <div class="au-clock"><span class="au-clock-time" id="auClock">--:--:--</span><span class="au-clock-dot"></span><span>ONLINE</span></div>
+      </div>
+    </aside>
+    <section class="au-pane">
+      <button class="au-close" id="closeAuth" title="关闭 (Esc)">✕</button>
+      <div class="au-head">
+        <h3 class="au-hello" id="auHello">欢迎回来</h3>
+        <p class="au-hello-sub" id="auHelloSub">登录以访问你的私人空间</p>
+      </div>
+      <div class="tabs au-tabs">
+        <button class="tab active" data-tab="login">登录</button>
+        <button class="tab" data-tab="register">注册</button>
+      </div>
+      <form id="authForm" autocomplete="off">
+        <label class="au-field">
+          <span class="au-label">用户名</span>
+          <input type="text" id="authUser" autocomplete="username" required placeholder=" ">
+        </label>
+        <label class="au-field">
+          <span class="au-label">密码</span>
+          <input type="password" id="authPass" autocomplete="current-password" required minlength="6" placeholder=" ">
+        </label>
+        <div class="err" id="authErr"></div>
+        <button type="submit" class="au-submit" id="authSubmit">登录</button>
+      </form>
+      <div class="au-foot">
+        <button id="guestBtn" class="au-link">游客模式浏览 →</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- 通用输入弹窗 -->
+<div class="modal" id="promptModal" hidden>
+  <div class="modal-box">
+    <div class="modal-title" id="promptTitle"></div>
+    <input type="text" id="promptInput" autocomplete="off">
+    <div class="err" id="promptErr"></div>
+    <div class="modal-foot right">
+      <button id="promptCancel" class="btn">取消</button>
+      <button id="promptOk" class="btn primary">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用确认弹窗 -->
+<div class="modal" id="confirmModal" hidden>
+  <div class="modal-box">
+    <div class="modal-title" id="confirmTitle"></div>
+    <div class="confirm-msg" id="confirmMsg"></div>
+    <div class="modal-foot right">
+      <button id="confirmCancel" class="btn">取消</button>
+      <button id="confirmOk" class="btn danger">删除</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<!-- office.js / netdiag.js 已改为按需加载（见 app.js 的 ensure()），不再进首屏 -->
+<script src="/auth-motion.js"></script>
+<script src="/i18n.js"></script>
+<script src="/thumbs-ui.js"></script>
+<script src="/panels.js"></script>
+<script src="/panels2.js"></script>
+<script src="/shell.js"></script>
+<script src="/app.js"></script>
+<script src="/aiview.js"></script>
+<script src="/station.js"></script>
+<script>
+/* PWA Service Worker（HTTPS/localhost 才生效；LAN http 下静默跳过） */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  /* R16：旧外壳的 SW 原来注册在**根作用域**（默认 scope='/'），
+     于是它会把整个新前端也接管掉，并用旧缓存策略响应请求。
+     这里收窄到 /legacy/，只服务于旧工具面板，不再干预主界面。 */
+  navigator.serviceWorker.register('/sw.js', { scope: '/legacy/' })
+    .then(() => navigator.serviceWorker.getRegistrations())
+    .then((rs) => Promise.all(rs
+      /* 只清「旧外壳」自己那一条（脚本 URL 以 /sw.js 结尾），
+         别误伤主界面在根作用域注册的游戏缓存 SW（/api/games/sw.js）。 */
+      .filter((r) => r.scope === location.origin + '/' && /\/sw\.js$/.test(r.active ? r.active.scriptURL : ''))
+      .map((r) => r.unregister().catch(() => {}))))
+    .catch(() => {});
+}
+</script>
+</body>
+</html>

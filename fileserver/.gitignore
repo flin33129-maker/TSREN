@@ -1,0 +1,30 @@
+# ── 运行时数据(23G:公共盘文件/缩略图/巡检报告 + 凭据)
+#    含 users.json / s3.json / apikey.json / oo-secret / sessions.json
+/data/
+
+# ── 第三方依赖
+/node_modules/
+
+# ── 第三方静态资产(体积大,由部署流程另行获取)
+/public/games/
+/public/office/assets/
+
+# ── 遗留的旧版嵌套目录(2026-09-08 老版本,已废弃)
+/fileserver/
+
+# ── 手工备份文件:已按时间序还原为 git 提交历史,不再保留在磁盘
+*.bak-*
+*.orig-*
+*.debug-*
+*.bak_*
+
+# ── 运行时产物
+*.pid
+*.log
+*.tmp
+*.swp
+
+# ── R16：体积大且由部署流程另行获取的目录（不进 Git，避免仓库膨胀）
+/games-lib/
+/public/app.prev/
+/public/office/

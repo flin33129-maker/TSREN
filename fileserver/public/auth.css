@@ -1,0 +1,328 @@
+/* ============================================================
+   auth.css — 登录/注册重设计（深海工业风）
+   依赖 index.html #authModal 结构；不改 app.js 逻辑
+   ============================================================ */
+
+:root {
+  --au-bg: #061019;
+  --au-bg2: #0a1826;
+  --au-ink: #e8f4f8;
+  --au-dim: #7c93a8;
+  --au-accent: #35e0d6;
+  --au-accent-dim: rgba(53, 224, 214, 0.14);
+  --au-line: rgba(124, 147, 168, 0.22);
+  --au-danger: #ff6b7a;
+  --au-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --au-sans: 'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+}
+
+/* ---------- 遮罩与卡片 ---------- */
+.modal#authModal {
+  background: rgba(2, 8, 14, 0.72);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  animation: au-fade 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal#authModal[hidden] { display: none; }
+
+.au-card {
+  display: flex;
+  width: min(860px, 94vw);
+  min-height: 520px;
+  max-height: 92vh;
+  background: var(--au-bg);
+  border: 1px solid var(--au-line);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(53, 224, 214, 0.06);
+  animation: au-card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--au-sans);
+  color: var(--au-ink);
+}
+@keyframes au-fade { from { opacity: 0; } }
+@keyframes au-card-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+}
+
+/* ---------- 左板：深海品牌 ---------- */
+.au-brand {
+  position: relative;
+  flex: 0 0 44%;
+  min-width: 0;
+  background: linear-gradient(160deg, #08131f 0%, #0a2135 55%, #0d3040 100%);
+  border-right: 1px solid var(--au-line);
+  overflow: hidden;
+}
+.au-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.au-brand-inner {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 34px 30px;
+  background: linear-gradient(180deg, transparent 40%, rgba(4, 12, 20, 0.82) 100%);
+}
+.au-logo {
+  position: absolute;
+  top: 28px;
+  left: 30px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: var(--au-accent);
+  border: 1px solid rgba(53, 224, 214, 0.4);
+  border-radius: 12px;
+  background: rgba(53, 224, 214, 0.08);
+  box-shadow: 0 0 24px rgba(53, 224, 214, 0.18);
+}
+.au-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+.au-sub {
+  margin: 0;
+  font-family: var(--au-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--au-accent);
+  opacity: 0.85;
+}
+.au-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.au-chip {
+  font-family: var(--au-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 3px 8px;
+  color: var(--au-dim);
+  border: 1px solid var(--au-line);
+  border-radius: 999px;
+}
+.au-clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-family: var(--au-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--au-dim);
+}
+.au-clock-time { color: var(--au-ink); font-size: 14px; }
+.au-clock-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3ddc84;
+  box-shadow: 0 0 10px #3ddc84;
+  animation: au-pulse 2.4s ease-in-out infinite;
+}
+@keyframes au-pulse { 50% { opacity: 0.35; } }
+
+/* ---------- 右板：表单 ---------- */
+.au-pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 44px 44px 30px;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(53, 224, 214, 0.05), transparent 55%),
+    var(--au-bg2);
+}
+.au-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--au-dim);
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.au-close:hover { color: var(--au-ink); border-color: var(--au-line); background: rgba(255, 255, 255, 0.04); }
+
+.au-head { margin-bottom: 18px; }
+.au-hello {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.au-hello-sub { margin: 6px 0 0; font-size: 13px; color: var(--au-dim); }
+
+/* Tab：下划线滑块 */
+.au-tabs {
+  display: flex;
+  gap: 26px;
+  border-bottom: 1px solid var(--au-line);
+  margin-bottom: 22px;
+}
+.au-tabs .tab {
+  position: relative;
+  padding: 10px 2px 12px;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--au-dim);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.au-tabs .tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--au-accent);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 12px rgba(53, 224, 214, 0.6);
+}
+.au-tabs .tab:hover { color: var(--au-ink); }
+.au-tabs .tab.active { color: var(--au-accent); }
+.au-tabs .tab.active::after { transform: scaleX(1); }
+
+/* 输入域：浮动光效 + 聚焦环 */
+.au-field { position: relative; display: block; margin-bottom: 16px; }
+.au-label {
+  display: block;
+  font-family: var(--au-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  color: var(--au-dim);
+  margin-bottom: 7px;
+  transition: color 0.2s ease;
+}
+.au-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  font: 15px/1.4 var(--au-sans);
+  letter-spacing: 0.02em;
+  color: var(--au-ink);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--au-line);
+  border-radius: 11px;
+  outline: none;
+  caret-color: var(--au-accent);
+  transition: border-color 0.2s ease, box-shadow 0.25s ease, background 0.2s ease;
+}
+.au-field input::placeholder { color: transparent; }
+.au-field input:hover { border-color: rgba(124, 147, 168, 0.45); }
+.au-field input:focus {
+  border-color: var(--au-accent);
+  background: rgba(53, 224, 214, 0.045);
+  box-shadow: 0 0 0 3px rgba(53, 224, 214, 0.14), 0 0 22px rgba(53, 224, 214, 0.08);
+}
+.au-field input:focus + .au-label, .au-field:focus-within .au-label { color: var(--au-accent); }
+
+/* 错误：非空即抖动 */
+.err {
+  min-height: 18px;
+  margin: 2px 0 8px;
+  font-size: 12.5px;
+  color: var(--au-danger);
+  line-height: 1.5;
+}
+#authErr:not(:empty) { animation: au-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+@keyframes au-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}
+
+/* 提交按钮：光泽扫过 + 悬浮 */
+.au-submit {
+  position: relative;
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 12px;
+  font: 700 15px/1 var(--au-sans);
+  letter-spacing: 0.22em;
+  color: #04212a;
+  background: linear-gradient(135deg, #4df0e6, #23b8b0);
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(53, 224, 214, 0.28);
+  transition: transform 0.16s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.au-submit::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.au-submit:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(53, 224, 214, 0.4); }
+.au-submit:hover::after { left: 130%; }
+.au-submit:active { transform: translateY(0) scale(0.99); }
+.au-submit:focus-visible { outline: 2px solid var(--au-accent); outline-offset: 3px; }
+
+.au-foot { margin-top: 18px; text-align: center; }
+.au-link {
+  background: none;
+  border: 0;
+  font: 500 13px var(--au-sans);
+  letter-spacing: 0.04em;
+  color: var(--au-dim);
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  padding: 6px 2px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.au-link:hover { color: var(--au-accent); border-bottom-color: var(--au-accent); }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 760px) {
+  .au-card { flex-direction: column; min-height: 0; width: min(440px, 94vw); }
+  .au-brand { flex: none; border-right: 0; border-bottom: 1px solid var(--au-line); }
+  .au-canvas { display: none; }
+  .au-brand-inner {
+    padding: 20px 24px 16px;
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: 4px 14px;
+    background: none;
+  }
+  .au-logo { position: static; grid-row: span 3; }
+  .au-title { font-size: 19px; }
+  .au-sub { font-size: 9.5px; }
+  .au-chips, .au-clock { display: none; }
+  .au-pane { padding: 26px 24px 22px; }
+}
+
+/* ---------- 动效降级 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .modal#authModal, .au-card { animation: none; }
+  .au-submit::after { display: none; }
+  .au-clock-dot { animation: none; }
+  #authErr:not(:empty) { animation: none; }
+  .au-tabs .tab::after, .au-submit, .au-field input { transition: none; }
+}

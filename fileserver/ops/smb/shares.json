@@ -1,0 +1,21 @@
+{
+  "_comment": "R15-P0 SMB 共享目录清单。部署到 /etc/samba/station-smb-shares.json；lib/smb-accounts.js 优先读它，读不到用内置同款清单。acl 字段对应 data/acl.json 的盘键（public/private/ext），决定每个用户在该共享上是 rw/ro/none；readonly=true 表示共享级只读（ACL 只决定可见性）。fixPerms=false 用于 fuseblk/NTFS 等不支持 Unix 属主映射的目录。",
+  "shares": [
+    { "name": "公共盘", "path": "/opt/station/fileserver/data/storage/public", "acl": "public", "readonly": false, "fixPerms": true, "comment": "团队共享 · 公共盘" },
+    { "name": "办公", "path": "/storage/办公", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · 办公" },
+    { "name": "备份", "path": "/storage/备份", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · 备份" },
+    { "name": "数据", "path": "/storage/数据", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · 数据" },
+    { "name": "Getea", "path": "/storage/Getea", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · Getea" },
+    { "name": "K%", "path": "/storage/K%", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · K%" },
+    { "name": "K1", "path": "/storage/K1", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · K1" },
+    { "name": "Q21", "path": "/storage/Q21", "acl": "private", "readonly": false, "fixPerms": true, "comment": "团队共享 · Q21" },
+    {
+      "name": "乱七八糟",
+      "path": "/storage/乱七八糟",
+      "acl": "private",
+      "readonly": true,
+      "fixPerms": false,
+      "comment": "只读共享 · E 盘（NTFS fuseblk 无 Unix 属主映射，为保证用户间独立 uid 故 SMB 只读）"
+    }
+  ]
+}

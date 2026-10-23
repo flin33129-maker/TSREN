@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>用户管理 · 深空工作站</title>
+<script src="/vendor/theme-boot.js"></script>
+<style>
+  :root{--bg:#f6f6fa;--panel:#fff;--line:#e8e8f0;--line2:#dcdce8;--txt:#171722;--txt2:#5b5b70;--txt3:#8e8ea6;--acc:#6b5cf6;--soft:#f0eeff;--bad:#dc2626;--ok:#1f9d55;
+    --shadow:0 1px 2px rgba(20,20,40,.04),0 8px 24px rgba(20,20,40,.06)}
+  html[data-theme=dark]{--bg:#0c0c12;--panel:#14141c;--line:#23232f;--line2:#2e2e3d;--txt:#ececf4;--txt2:#a0a0b8;--txt3:#6e6e86;--soft:#1c1a2e;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);color-scheme:dark}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:920px;margin:0 auto;padding:26px 22px 70px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  h1{font-size:20px;font-weight:650;margin:0}
+  .sub{color:var(--txt3);font-size:12.5px}
+  .spacer{flex:1}
+  .back{padding:7px 13px;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--txt);text-decoration:none;font-size:13px}
+  .back:hover{border-color:var(--acc);color:var(--acc)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow);margin-bottom:16px}
+  .card h2{font-size:14px;font-weight:600;margin:0 0 14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  input,select{padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font:inherit;font-size:13px;outline:none}
+  input:focus,select:focus{border-color:var(--acc)}
+  input.u{flex:1;min-width:130px}
+  button{padding:9px 16px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--txt);font:inherit;font-size:13px;cursor:pointer}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+  button.pri{background:linear-gradient(100deg,#7d6df8,#5a4be0);border:0;color:#fff}
+  button.pri:hover{opacity:.92;color:#fff}
+  button.danger{color:var(--bad);border-color:rgba(220,38,38,.3)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
+  th{font-size:11.5px;color:var(--txt3);font-weight:500}
+  tr:last-child td{border-bottom:0}
+  .who{display:flex;align-items:center;gap:9px}
+  .av{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;background:linear-gradient(135deg,#7d6df8,#5a4be0)}
+  .tag{font-size:10px;padding:1px 7px;border-radius:5px;background:var(--soft);color:var(--acc);font-weight:600}
+  .tag.off{background:rgba(140,140,160,.12);color:var(--txt3)}
+  .msg{font-size:12.5px;margin-top:10px;color:var(--txt3)}
+  .msg.err{color:var(--bad)}
+  .msg.ok{color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>用户管理</h1>
+    <span class="sub">添加成员、重置密码、停用账号</span>
+    <span class="spacer"></span>
+    <a class="back" href="/">‹ 返回工作站</a>
+  </header>
+
+  <div class="card">
+    <h2>添加用户</h2>
+    <div class="row">
+      <input class="u" id="nu" placeholder="用户名（登录名）">
+      <input class="u" id="np" placeholder="初始密码" type="password">
+      <select id="nr"><option value="user">普通成员</option><option value="admin">管理员</option></select>
+      <button class="pri" id="addBtn">添加</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>现有用户 <span id="cnt" style="color:var(--txt3);font-weight:400"></span></h2>
+    <table>
+      <thead><tr><th>用户</th><th>角色</th><th>状态</th><th style="text-align:right">操作</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function say(t, cls) { var m = $('msg'); m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+  function load() {
+    fetch('/api/admin/users', { credentials: 'include' })
+      .then(function (r) { if (r.status === 403 || r.status === 401) { location.replace('/'); throw new Error('没有权限'); } return r.json(); })
+      .then(function (j) {
+        var us = j.users || [];
+        $('cnt').textContent = '· ' + us.length + ' 人';
+        $('tb').innerHTML = us.map(function (u) {
+          var on = u.status !== 'disabled';
+          return '<tr><td><div class="who"><span class="av">' + esc((u.nickname || u.username).slice(0, 1).toUpperCase()) + '</span>'
+            + '<span><div style="font-weight:550">' + esc(u.nickname || u.username) + '</div>'
+            + '<div style="font-size:11px;color:var(--txt3)">' + esc(u.username) + '</div></span></div></td>'
+            + '<td>' + (u.role === 'admin' ? '<span class="tag">管理员</span>' : '成员') + '</td>'
+            + '<td>' + (on ? '<span style="color:var(--ok)">正常</span>' : '<span class="tag off">已停用</span>') + '</td>'
+            + '<td style="text-align:right;white-space:nowrap">'
+            + '<button data-act="toggle" data-u="' + esc(u.username) + '">' + (on ? '停用' : '启用') + '</button> '
+            + '<button data-act="pass" data-u="' + esc(u.username) + '">改密</button> '
+            + '<button class="danger" data-act="del" data-u="' + esc(u.username) + '">删除</button>'
+            + '</td></tr>';
+        }).join('') || '<tr><td colspan="4" style="color:var(--txt3);padding:24px 8px">还没有用户</td></tr>';
+
+        $('tb').querySelectorAll('button').forEach(function (b) {
+          b.onclick = function () {
+            var act = b.getAttribute('data-act'), u = b.getAttribute('data-u');
+            if (act === 'toggle') {
+              post('/api/admin/users/toggle', { username: u }, '已切换状态');
+            } else if (act === 'del') {
+              if (!confirm('确定删除用户「' + u + '」？该操作不可撤销。')) return;
+              post('/api/admin/users/delete', { username: u }, '已删除 ' + u);
+            } else if (act === 'pass') {
+              var p = prompt('给「' + u + '」设置新密码（至少 6 位）');
+              if (!p) return;
+              post('/api/admin/users/setpass', { username: u, password: p }, '密码已更新');
+            }
+          };
+        });
+      })
+      .catch(function (e) { say(e.message, 'err'); });
+  }
+
+  function post(url, body, okMsg) {
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { say(res.j.error || '操作失败', 'err'); return; }
+        say(okMsg, 'ok');
+        load();
+      })
+      .catch(function (e) { say(e.message, 'err'); });
+  }
+
+  $('addBtn').onclick = function () {
+    var u = $('nu').value.trim(), p = $('np').value, role = $('nr').value;
+    if (!u || !p) { say('用户名和密码都要填', 'err'); return; }
+    if (p.length < 6) { say('密码至少 6 位', 'err'); return; }
+    post('/api/admin/users/create', { username: u, password: p, role: role }, '已添加 ' + u);
+    $('nu').value = ''; $('np').value = '';
+  };
+
+  load();
+})();
+</script>
+<a id="r15-new-entry" href="/app/" style="position:fixed;right:18px;bottom:18px;z-index:2147483000;display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;background:linear-gradient(140deg,#8b6cf0,#6d4fd8);color:#fff;font:600 13px/1 'Segoe UI','Microsoft YaHei',sans-serif;text-decoration:none;box-shadow:0 8px 24px rgba(90,60,200,.45)"><span style="width:8px;height:8px;border-radius:50%;background:#57e2a3;display:inline-block"></span>R15 新版工作站 · 点此进入</a>
+</body>
+</html>

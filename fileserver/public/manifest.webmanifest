@@ -1,0 +1,18 @@
+{
+  "name": "深海文件站",
+  "short_name": "深海文件站",
+  "description": "局域网私有文件服务器",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#061019",
+  "theme_color": "#061019",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
