@@ -121,24 +121,32 @@ function httpProbe(port, path, timeoutMs) {
 async function probeProtocols(app) {
   if (_protoCache.data && Date.now() - _protoCache.at < PROTO_CACHE_MS) return _protoCache.data;
   const svcs = (app && app.svcs) || {};
+  const cfg = (app && app.cfg) || {};
+  /* 端口一律从运行时配置取：主服务可能被 PORT 改过，FTP/NFS 也可能被顺延
+     （见 server.js 的 _auxPort）。写死 8081/2049 会让「连接服务」页在非默认端口的
+     部署里整页飘红——明明服务好着。 */
+  const web = Number(cfg.port) || 8081;
+  const ftpPort = Number(svcs.ftp) || Number(cfg.ftpPort) || 2121;
+  const nfsPort = Number(svcs.nfs) || Number(cfg.nfsPort) || 2049;
+  const mountPort = Number(svcs.nfsMount) || Number(cfg.nfsMountPort) || 42000;
   const [davCode, s3Code, officeCode, officeTcp, ftp, nfs, rsync, ssh, smbPort] = await Promise.all([
-    httpProbe(8081, '/dav'),
-    httpProbe(8081, '/s3'),
-    httpProbe(42000, '/'),
-    tcpProbe(42000),
-    tcpProbe(2121), tcpProbe(2049), tcpProbe(873), tcpProbe(22), tcpProbe(445),
+    httpProbe(web, '/dav'),
+    httpProbe(web, '/s3'),
+    httpProbe(mountPort, '/'),
+    tcpProbe(mountPort),
+    tcpProbe(ftpPort), tcpProbe(nfsPort), tcpProbe(873), tcpProbe(22), tcpProbe(445),
   ]);
   const officeUp = officeCode > 0 || officeTcp;
   const list = [
     { id: 'smb', name: 'SMB / CIFS', endpoint: '\\\\<host>\\<共享>', port: 445, active: smbPort, detail: '个人账号认证 · 无 guest · SMB3' },
-    { id: 'dav', name: 'WebDAV', endpoint: '/dav', port: 8081, active: davCode > 0, detail: davCode ? ('HTTP ' + davCode + '（需登录）') : '无响应' },
-    { id: 's3', name: 'S3 网关', endpoint: '/s3', port: 8081, active: s3Code > 0, detail: s3Code ? ('HTTP ' + s3Code) : '无响应' },
-    { id: 'ftp', name: 'FTP', endpoint: 'ftp://<host>:2121', port: 2121, active: ftp, detail: '匿名只读（历史兼容）' },
-    { id: 'nfs', name: 'NFS', endpoint: '<host>:/storage', port: 2049, active: nfs, detail: '游客权限（已不导出 private）' },
+    { id: 'dav', name: 'WebDAV', endpoint: '/dav', port: web, active: davCode > 0, detail: davCode ? ('HTTP ' + davCode + '（需登录）') : '无响应' },
+    { id: 's3', name: 'S3 网关', endpoint: '/s3', port: web, active: s3Code > 0, detail: s3Code ? ('HTTP ' + s3Code) : '无响应' },
+    { id: 'ftp', name: 'FTP', endpoint: 'ftp://<host>:' + ftpPort, port: ftpPort, active: ftp, detail: '匿名只读（历史兼容）' },
+    { id: 'nfs', name: 'NFS', endpoint: '<host>:/storage', port: nfsPort, active: nfs, detail: '游客权限（已不导出 private）' + (nfsPort !== 2049 ? ' · 非标准端口 ' + nfsPort : '') },
     { id: 'rsync', name: 'rsync', endpoint: 'rsync://<host>/', port: 873, active: rsync, detail: '只读 · 限私网' },
-    { id: 'dlna', name: 'DLNA', endpoint: '/dlna/description.xml', port: 8081, active: svcs.dlna === true || davCode > 0, detail: '只读媒体发现' },
+    { id: 'dlna', name: 'DLNA', endpoint: '/dlna/description.xml', port: web, active: svcs.dlna === true || davCode > 0, detail: '只读媒体发现' },
     { id: 'mdns', name: 'mDNS', endpoint: '_station._tcp', port: 5353, active: svcs.mdns === true, detail: '仅发现' },
-    { id: 'office', name: '办公协同 relay', endpoint: 'ws://<host>:42000', port: 42000, active: officeUp, detail: officeTcp ? ('TCP 42000 监听' + (officeCode ? ' · HTTP ' + officeCode : '')) : '无响应' },
+    { id: 'office', name: '办公协同 relay', endpoint: 'ws://<host>:' + mountPort, port: mountPort, active: officeUp, detail: officeTcp ? ('TCP ' + mountPort + ' 监听' + (officeCode ? ' · HTTP ' + officeCode : '')) : '无响应' },
     { id: 'ssh', name: 'SSH / SFTP', endpoint: 'ssh://<host>:22', port: 22, active: ssh, detail: '管理员通道' },
   ];
   const data = { at: new Date().toISOString(), activeCount: list.filter((x) => x.active).length, total: list.length, protocols: list };

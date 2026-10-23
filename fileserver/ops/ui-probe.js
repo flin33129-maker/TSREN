@@ -22,7 +22,9 @@
 
 const path = require('path');
 
-const BASE = (process.env.BASE || 'http://127.0.0.1:8081').replace(/\/$/, '');
+const RAW_BASE = (process.env.BASE || 'http://127.0.0.1:8081').replace(/\/$/, '');
+/* 受限端口（如 2049）会被 Node fetch / 浏览器拒绝：脚本内部改走本地 TCP 转发 */
+let BASE = RAW_BASE;
 const USER = process.env.USER || 'admin';
 const PASS = process.env.PASS || '';
 const routeArg = process.argv.find((a) => a.startsWith('--routes='));
@@ -238,6 +240,8 @@ async function login() {
 }
 
 (async () => {
+  const { safeBase } = require('./lib/unsafe-port-bridge');
+  BASE = await safeBase(RAW_BASE);
   if (!(await login())) { console.error('登录失败（检查 USER/PASS）'); process.exit(1); }
   if (oneArg) return probeOne(oneArg.slice(6));
 

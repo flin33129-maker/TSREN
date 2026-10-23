@@ -40,16 +40,27 @@ const MDNS_MAX_NAME = 255;       // 名字总长最多 255 字节
 
 /* ----------------------------- 服务声明表 ----------------------------- */
 // 服务实例名统一为 <hostname>（如 nas-k50）。
-// 这些服务类型与端口：
-const SERVICES = [
-  { type: '_http._tcp.local', port: 8081, txt: ['path=/'] },
-  { type: '_webdav._tcp.local', port: 8081, txt: ['path=/dav/'] },
-  { type: '_sftp-ssh._tcp.local', port: 8022, txt: [] }, // 仅发现广告，守护进程可能未运行
-  { type: '_nfs._tcp.local', port: 2049, txt: [] },      // 仅发现广告
-  { type: '_ftp._tcp.local', port: 2121, txt: [] },      // 仅发现广告
-  // Time Machine 广告位（诚实边界见文件头注释）
-  { type: '_adisk._tcp.local', port: 8081, txt: ['sys=waMa=0', 'adVF=0x100'] },
-];
+//
+// 端口**不能写死**：主服务端口来自 config.json / PORT，NFS、FTP 端口也可能被挪动
+// （见 server.js 的 _auxPort：与主服务撞端口时会顺延）。
+// 以前这里全是 8081/2049/2121 常量，改端口部署后 mDNS 广播出去的就是死地址。
+function servicesOf(srv) {
+  const cfg = (srv && srv.cfg) || {};
+  const svcs = (srv && srv.svcs) || {};
+  const web = Number(cfg.port) || 8081;
+  const nfs = Number(svcs.nfs) || 2049;
+  const ftp = Number(svcs.ftp) || 2121;
+  const ssh = Number(svcs.sshd) || 8022;
+  return [
+    { type: '_http._tcp.local', port: web, txt: ['path=/'] },
+    { type: '_webdav._tcp.local', port: web, txt: ['path=/dav/'] },
+    { type: '_sftp-ssh._tcp.local', port: ssh, txt: [] }, // 仅发现广告，守护进程可能未运行
+    { type: '_nfs._tcp.local', port: nfs, txt: [] },      // 仅发现广告
+    { type: '_ftp._tcp.local', port: ftp, txt: [] },      // 仅发现广告
+    // Time Machine 广告位（诚实边界见文件头注释）
+    { type: '_adisk._tcp.local', port: web, txt: ['sys=waMa=0', 'adVF=0x100'] },
+  ];
+}
 
 /* ----------------------------- 报文编解码 ----------------------------- */
 
@@ -196,6 +207,8 @@ class MdnsResponder {
    */
   constructor(srv) {
     this.srv = srv;
+    /* 每轮应答都基于当前配置算一遍端口，改完 config 重启即生效 */
+    this.services = servicesOf(srv);
     this.hostname = 'nas-k50';
     this.sock = null;
     this.running = false;
@@ -259,11 +272,11 @@ class MdnsResponder {
     const ips = this._ips();
     const answers = [];
     // 服务类型枚举（_services._dns-sd._udp.local PTR → 各服务类型）
-    for (const s of SERVICES) {
+    for (const s of this.services) {
       answers.push(rrPtr('_services._dns-sd._udp.local', s.type, false));
     }
     // 每个服务：PTR(type→instance) + SRV + TXT（SRV/TXT 设 cache-flush）
-    for (const s of SERVICES) {
+    for (const s of this.services) {
       const inst = this._instance(s.type);
       answers.push(rrPtr(s.type, inst, false));                       // PTR 不刷缓存（共享记录）
       answers.push(rrSrv(inst, 0, 0, s.port, this.hostFqdn, true));   // cache-flush
@@ -299,7 +312,7 @@ class MdnsResponder {
 
       // 1) 服务枚举查询：_services._dns-sd._udp.local
       if (ip === '_services._dns-sd._udp.local' && (q.qtype === 12 || q.qtype === 255)) {
-        for (const s of SERVICES) answers.push(rrPtr('_services._dns-sd._udp.local', s.type, false));
+        for (const s of this.services) answers.push(rrPtr('_services._dns-sd._udp.local', s.type, false));
         responded = true;
         continue;
       }
@@ -312,7 +325,7 @@ class MdnsResponder {
         continue;
       }
       // 3) 服务类型 PTR 查询：_http._tcp.local 等 → 返回实例 PTR + SRV + TXT + A
-      const svc = SERVICES.find((s) => s.type === ip);
+      const svc = this.services.find((s) => s.type === ip);
       if (svc && (q.qtype === 12 || q.qtype === 255)) {
         const inst = this._instance(svc.type);
         answers.push(rrPtr(svc.type, inst, false));
@@ -323,7 +336,7 @@ class MdnsResponder {
         continue;
       }
       // 4) 服务实例查询：nas-k50._http._tcp.local 等（SRV / TXT / ANY）
-      const svc2 = SERVICES.find((s) => this._instance(s.type) === ip);
+      const svc2 = this.services.find((s) => this._instance(s.type) === ip);
       if (svc2 && (q.qtype === 33 || q.qtype === 16 || q.qtype === 255)) {
         const inst = this._instance(svc2.type);
         if (q.qtype === 33 || q.qtype === 255) additionals.push(rrSrv(inst, 0, 0, svc2.port, this.hostFqdn, true));

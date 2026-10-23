@@ -105,6 +105,19 @@ const DEFAULTS = {
   http2: true,             // HTTP/2（h2 + h2c prior knowledge）
   chunkThresholdMB: 64,   // 超过此大小前端自动走分块上传
   versionHistory: true,   // 覆盖写入前把旧文件存入 .versions
+
+  /* 附属协议端口（可配）+ 开关。
+     以前 FTP/NFS/MOUNT 的端口是写死的 2121/2049/42000：一旦把主服务改到
+     2049（预览/反代环境很常见），两个服务抢同一个端口，NFS 直接起不来，
+     而主服务并不会提示你去改——只能靠翻日志。现在：
+       · 端口可配（下面三个键，或 config.json 里的 ports 对象）；
+       · 与主服务端口撞车时**自动顺延**（+10000）并打印一行日志；
+       · protocols.* 置 false 可关掉对应协议。
+     命令行演示：PORT=2049 node server.js（NFS 会自动挪到 12049） */
+  ftpPort: 2121,
+  nfsPort: 2049,
+  nfsMountPort: 42000,
+  protocols: { ftp: true, nfs: true, dlna: true, mdns: true },
 };
 
 /** 公共盘配额：64GB */
@@ -318,6 +331,20 @@ function loadConfig() {
   if (process.env.MAX_UPLOAD_MB) cfg.maxUploadMB = Number(process.env.MAX_UPLOAD_MB);
   if (process.env.TLS) cfg.tls = !/^(0|false|no|off)$/i.test(process.env.TLS);
   if (process.env.HTTP2) cfg.http2 = !/^(0|false|no|off)$/i.test(process.env.HTTP2);
+  if (process.env.FTP_PORT) cfg.ftpPort = Number(process.env.FTP_PORT);
+  if (process.env.NFS_PORT) cfg.nfsPort = Number(process.env.NFS_PORT);
+  if (process.env.NFS_MOUNT_PORT) cfg.nfsMountPort = Number(process.env.NFS_MOUNT_PORT);
+
+  /* config.json 里允许两种写法：
+       { "ftpPort": 2121, "nfsPort": 2049, "nfsMountPort": 42000 }
+       { "ports": { "ftp": 2121, "nfs": 2049, "mount": 42000 } }
+     后者更好记，这里做一次归一化。 */
+  if (cfg.ports && typeof cfg.ports === 'object') {
+    if (cfg.ports.ftp != null) cfg.ftpPort = Number(cfg.ports.ftp);
+    if (cfg.ports.nfs != null) cfg.nfsPort = Number(cfg.ports.nfs);
+    if (cfg.ports.mount != null) cfg.nfsMountPort = Number(cfg.ports.mount);
+  }
+  cfg.protocols = Object.assign({ ftp: true, nfs: true, dlna: true, mdns: true }, cfg.protocols || {});
 
   cfg.dataDir = path.resolve(cfg.dataDir);
   cfg.storageDir = path.resolve(cfg.storageDir || path.join(cfg.dataDir, 'storage'));
@@ -658,6 +685,31 @@ class FileServer {
    * 不能直接用 cfg.host —— 那是监听地址（0.0.0.0），
    * 让用户去别的电脑输 \\0.0.0.0\公共盘 毫无意义。
    */
+  /**
+   * 附属协议（FTP / NFS / MOUNT）的目标端口。
+   *
+   * 规则：
+   *   ① 与主服务端口相同 → 顺延 +10000，并打印说明（主服务永远优先）；
+   *   ② 显式配成 0 或 false → 视为关闭，返回 0；
+   *   ③ 其它情况原样返回。
+   *
+   * 为什么需要：这些是「标准端口」，但标准端口在任何一台跑过别的服务的机器上
+   * 都可能被占。以前是硬编码，改 PORT 就会和 NFS 抢 2049 —— 而且 NFS 抢输了
+   * 一声不响（socket error 只打一行），用户只会觉得「NFS 怎么坏了」。
+   */
+  _auxPort(name, want, key) {
+    const w = Number(want);
+    if (!w || w < 0) return 0;
+    const main = Number(this.cfg.port) || 0;
+    if (w === main) {
+      const moved = w + 10000;
+      console.log('  [' + name + '] 端口 ' + w + ' 与本服务端口相同，已顺延到 ' + moved
+        + '（想换回来：config.json 里设 ports.' + (key || name.toLowerCase()) + '）');
+      return moved;
+    }
+    return w;
+  }
+
   smbHost() {
     try {
       const ips = getLocalIPs() || [];
@@ -5573,28 +5625,49 @@ class FileServer {
     try { this.limiter = createLimiterFromCfg(this); } catch (e) {}
 
     /* v3：附属协议服务（全部容错启动，端口占用不影响主服务） */
-    try {
-      new FtpServer(this).listen(2121).catch((e) => console.error('  [FTP] 启动失败:', e.message));
-      this.svcs.ftp = 2121;
-    } catch (e) { console.error('  [FTP] 启动失败:', e.message); }
-    try {
-      this.nfs = new NfsServer(this);
-      this.nfs.listen({ tcpPort: 2049, udpPort: 2049, mountTcpPort: 42000, mountUdpPort: 42000 });
-      this.svcs.nfs = 2049;
-    } catch (e) { console.error('  [NFS] 启动失败:', e.message); }
-    try { this.dlna.start({}); this.svcs.dlna = true; } catch (e) { console.error('  [DLNA] 启动失败:', e.message); }
-    try {
-      this.mdns = new MdnsResponder(this);
-      this.mdns.start({ hostname: 'nas-k50' });
-      this.svcs.mdns = true;
-    } catch (e) { console.error('  [mDNS] 启动失败:', e.message); }
+    const proto = this.cfg.protocols || {};
+    const aux = (name, want, key) => this._auxPort(name, want, key);
+    const ftpPort = proto.ftp === false ? 0 : aux('FTP', this.cfg.ftpPort, 'ftp');
+    if (ftpPort) {
+      try {
+        new FtpServer(this).listen(ftpPort).catch((e) => console.error('  [FTP] 启动失败:', e.message));
+        this.svcs.ftp = ftpPort;
+      } catch (e) { console.error('  [FTP] 启动失败:', e.message); }
+    } else if (proto.ftp === false) {
+      console.log('  [FTP] 已按配置关闭（protocols.ftp: false）');
+    }
+    const nfsPort = proto.nfs === false ? 0 : aux('NFS', this.cfg.nfsPort, 'nfs');
+    const mountPort = proto.nfs === false ? 0 : aux('NFS-MOUNT', this.cfg.nfsMountPort, 'nfsMount');
+    if (nfsPort && mountPort) {
+      try {
+        this.nfs = new NfsServer(this);
+        this.nfs.listen({ tcpPort: nfsPort, udpPort: nfsPort, mountTcpPort: mountPort, mountUdpPort: mountPort });
+        this.svcs.nfs = nfsPort;
+        this.svcs.nfsMount = mountPort;
+        if (nfsPort !== Number(this.cfg.nfsPort)) {
+          console.log('  [NFS] 提示：挂载时要带非标准端口 → mount -o port=' + nfsPort + ',mountport=' + mountPort + ' <host>:/storage /mnt/nas');
+        }
+      } catch (e) { console.error('  [NFS] 启动失败:', e.message); }
+    } else if (proto.nfs === false) {
+      console.log('  [NFS] 已按配置关闭（protocols.nfs: false）');
+    }
+    if (proto.dlna !== false) {
+      try { this.dlna.start({}); this.svcs.dlna = true; } catch (e) { console.error('  [DLNA] 启动失败:', e.message); }
+    }
+    if (proto.mdns !== false) {
+      try {
+        this.mdns = new MdnsResponder(this);
+        this.mdns.start({ hostname: 'nas-k50' });
+        this.svcs.mdns = true;
+      } catch (e) { console.error('  [mDNS] 启动失败:', e.message); }
+    }
 
     /* R3-5（P1）：无认证/弱认证协议一律跟随 cfg.host（默认 0.0.0.0）暴露。
        这里显式列出暴露面，便于用户判断是否需要改成 bind 127.0.0.1 或关闭某协议。 */
     try {
       if (this.cfg.host === '0.0.0.0' || !this.cfg.host) {
         console.log('  [安全提示] 监听 0.0.0.0，以下服务对局域网可达：');
-        console.log('             FTP:2121(匿名只读) · NFS:2049(游客权限,已不导出 private) · DLNA(只读) · rsync:873(只读,限私网) · mDNS:5353(仅发现)');
+        console.log('             FTP:' + (this.svcs.ftp || '-') + '(匿名只读) · NFS:' + (this.svcs.nfs || '-') + '(游客权限,已不导出 private) · DLNA(只读) · rsync:873(只读,限私网) · mDNS:5353(仅发现)');
         console.log('             如需仅本机访问：设置 host: "127.0.0.1"。WebDAV/S3 走主端口并有各自鉴权。');
       }
     } catch { /* 提示失败不影响启动 */ }
@@ -5736,7 +5809,8 @@ class FileServer {
       console.log(`  数据目录   : ${this.cfg.dataDir}`);
       console.log(`  上传上限   : ${this.cfg.maxUploadMB} MB / 次（超过 ${this.cfg.chunkThresholdMB} MB 自动分块）`);
       console.log(`  注册用户   : ${this.users.count}`);
-      console.log(`  附属服务   : FTP:2121  NFS:2049(mount:42000)  S3:/s3  API文档:/api/doc`);
+      console.log('  附属服务   : FTP:' + (this.svcs.ftp || '-') + '  NFS:' + (this.svcs.nfs || '-')
+        + '(mount:' + (this.svcs.nfsMount || '-') + ')  S3:/s3  API文档:/api/doc');
       console.log(`             DLNA(SSDP alive)  mDNS(nas-k50.local)  WebDAV:/dav`);
       console.log(`  工作站 v4.1: 实时事件流 /api/events（SSE）· 设备在线 · 任务中心 · 协同板`);
       console.log(`             远程控制 /api/remote/* · 数据同步 /api/sync/* · 限时分享 /s/<token>`);

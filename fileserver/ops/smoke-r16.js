@@ -20,7 +20,10 @@
  * 退出码：0 全过，1 有失败（可直接挂到 CI / cron）。
  */
 
-const BASE = (process.env.BASE || 'http://127.0.0.1:8081').replace(/\/$/, '');
+const RAW_BASE = (process.env.BASE || 'http://127.0.0.1:8081').replace(/\/$/, '');
+/* 服务可能跑在受限端口（如 2049）上：curl 能连，Node 的 fetch 会直接 bad port。
+   这里自动在本地开一条 TCP 转发，脚本语义不变。 */
+let BASE = RAW_BASE;
 const USER = process.env.USER || 'admin';
 const PASS = process.env.PASS || 'Kx9#mQ2vLp7z';
 const DO_REGISTER = process.argv.includes('--register');
@@ -290,7 +293,9 @@ async function stepGuard() {
 /* ───────────────────────────── main ───────────────────────────── */
 
 (async () => {
-  console.log('冒烟目标：' + BASE + '（用户 ' + USER + '）\n');
+  const { safeBase } = require('./lib/unsafe-port-bridge');
+  BASE = await safeBase(RAW_BASE);
+  console.log('冒烟目标：' + RAW_BASE + (BASE !== RAW_BASE ? '（经本地转发 ' + BASE + '）' : '') + '（用户 ' + USER + '）\n');
   await stepBoot();
   await stepStatic();
   await stepOffice();
