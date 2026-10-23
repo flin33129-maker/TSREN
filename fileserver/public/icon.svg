@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 深海底 · 圆角方块 -->
+  <rect width="512" height="512" rx="112" fill="#061019"/>
+  <!-- NAS 机箱轮廓（荧光青线条） -->
+  <rect x="118" y="118" width="276" height="276" rx="30" fill="none" stroke="#35e0d6" stroke-width="18"/>
+  <!-- 盘位分隔线 -->
+  <line x1="118" y1="256" x2="394" y2="256" stroke="#35e0d6" stroke-width="14"/>
+  <!-- 指示灯 ×2（荧光青 / 琥珀） -->
+  <circle cx="168" cy="187" r="17" fill="#35e0d6"/>
+  <circle cx="168" cy="325" r="17" fill="#ffb454"/>
+  <!-- 散热格栅 -->
+  <g stroke="#35e0d6" stroke-width="12" stroke-linecap="round" opacity="0.85">
+    <line x1="248" y1="187" x2="352" y2="187"/>
+    <line x1="248" y1="325" x2="352" y2="325"/>
+  </g>
+</svg>

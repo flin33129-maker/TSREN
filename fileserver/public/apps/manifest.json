@@ -1,0 +1,243 @@
+{
+  "apps": [
+    {
+      "slug": "neon-2048",
+      "title": "星际 2048",
+      "desc": "合成消除 · 数字方块在深空轨道上合并 · 支持滑动与历史最佳",
+      "tags": [
+        "游戏",
+        "益智",
+        "轻量"
+      ],
+      "zone": "新作区",
+      "group": "益智 / 合成",
+      "entry": "/games/neon-2048/index.html"
+    },
+    {
+      "slug": "city-tetris",
+      "title": "都市方块",
+      "desc": "经典方块消除的现代重制 · 落点预览 / 幽灵提示 / 等级加速",
+      "tags": [
+        "游戏",
+        "益智",
+        "轻量"
+      ],
+      "zone": "新作区",
+      "group": "益智 / 合成",
+      "entry": "/games/city-tetris/index.html"
+    },
+    {
+      "slug": "lightning-snake",
+      "title": "闪电贪吃蛇",
+      "desc": "霓虹街机贪吃蛇 · 闪电道具加分 · 速度随体型递增",
+      "tags": [
+        "游戏",
+        "街机",
+        "轻量"
+      ],
+      "zone": "新作区",
+      "group": "街机 / 反应",
+      "entry": "/games/lightning-snake/index.html"
+    },
+    {
+      "slug": "void-sweeper",
+      "title": "虚空扫雷",
+      "desc": "矩阵排雷 · 右键标记 · 秒表计分 · 手机长按友好",
+      "tags": [
+        "游戏",
+        "益智",
+        "轻量"
+      ],
+      "zone": "新作区",
+      "group": "益智 / 合成",
+      "entry": "/games/void-sweeper/index.html"
+    },
+    {
+      "slug": "claude-of-tanks",
+      "title": "装甲狂潮 · 钢铁苍穹",
+      "desc": "170 辆全尺寸 3D 战车 + 30 张可破坏战场 · 真实等效穿深与 X-Ray 击穿回放（Three.js r185）",
+      "tags": [
+        "游戏",
+        "3D",
+        "FPS",
+        "坦克"
+      ],
+      "zone": "新作区",
+      "group": "FPS：第一人称射击",
+      "entry": "/games/claude-of-tanks/index.html"
+    },
+    {
+      "slug": "openarena",
+      "title": "OpenArena 竞技场",
+      "desc": "Quake III 引擎（ioquake3）WebAssembly 原生运行 · 真 3D 竞技场射击 · 自由素材 · PC 键鼠 / 手机双摇杆",
+      "tags": [
+        "游戏",
+        "3D",
+        "FPS"
+      ],
+      "zone": "新作区",
+      "group": "FPS：第一人称射击",
+      "entry": "/games/openarena/index.html"
+    },
+    {
+      "slug": "hexgl",
+      "title": "反重力狂飙 · 霓虹天际",
+      "desc": "殿堂级开源 3D 反重力竞速（致敬 Wipeout）· 高空峡谷赛道 / 涡轮加速带 / 护盾碰撞损耗",
+      "tags": [
+        "游戏",
+        "3D",
+        "竞速"
+      ],
+      "zone": "新作区",
+      "group": "竞速",
+      "entry": "/games/hexgl/index.html"
+    },
+    {
+      "slug": "server-survival",
+      "title": "云境防线 · 3D 赛博塔防",
+      "desc": "GitHub 6420★ 开源爆款 · 3D 等轴测赛博塔防 · 25 关战役 + 无尽沙盒 · 原生简体中文",
+      "tags": [
+        "游戏",
+        "3D",
+        "塔防"
+      ],
+      "zone": "新作区",
+      "group": "策略 / 塔防",
+      "entry": "/games/server-survival/index.html"
+    },
+    {
+      "slug": "jungle-trail",
+      "title": "幽林秘境 · 程序化雨林",
+      "desc": "零贴图依赖的纯代码生成 3D 第一人称雨林 · 体积光束 / 风场植被 / 地形起伏",
+      "tags": [
+        "游戏",
+        "3D",
+        "探索"
+      ],
+      "zone": "新作区",
+      "group": "冒险 / 解谜",
+      "entry": "/games/jungle-trail/index.html"
+    },
+    {
+      "slug": "stellarfall",
+      "title": "星陨大陆：觉醒",
+      "desc": "第一人称 3D 开放世界 RPG（WebGL2）· 自研渲染管线",
+      "tags": [
+        "游戏",
+        "3D",
+        "RPG"
+      ],
+      "zone": "新作区",
+      "group": "角色扮演",
+      "entry": "/apps/stellarfall/index.html"
+    },
+    {
+      "slug": "deepspace-office",
+      "title": "深空办公",
+      "desc": "表格 / 文档 / 演示 / PDF 一体化 · 局域网实时多人协作",
+      "tags": [
+        "办公",
+        "协作"
+      ],
+      "zone": "办公区",
+      "group": "办公",
+      "entry": "/apps/deepspace-office/index.html"
+    },
+    {
+      "slug": "mobile-files",
+      "title": "手机文件",
+      "desc": "管理员浏览 / 播放 / 改名 / 移动 / 删除手机里的照片视频音乐",
+      "tags": [
+        "工具",
+        "管理"
+      ],
+      "zone": "工具区",
+      "group": "工具",
+      "entry": "/apps/mobile-files/index.html"
+    },
+    {
+      "slug": "instant-message",
+      "title": "即时消息",
+      "desc": "频道与私聊 · 飞书式消息面板 · 文件直接拖进会话",
+      "tags": [
+        "协作",
+        "沟通"
+      ],
+      "zone": "协作区",
+      "group": "协作",
+      "entry": "/apps/instant-message/index.html"
+    },
+    {
+      "slug": "video-meet",
+      "title": "视频会议",
+      "desc": "局域网内的音视频会议房间 · 屏幕共享",
+      "tags": [
+        "协作",
+        "会议"
+      ],
+      "zone": "协作区",
+      "group": "协作",
+      "entry": "/apps/video-meet/index.html"
+    },
+    {
+      "slug": "file-convert",
+      "title": "格式转换",
+      "desc": "PDF / Office / 图片批量互转 · 服务端离线转换",
+      "tags": [
+        "工具",
+        "转换"
+      ],
+      "zone": "工具区",
+      "group": "工具",
+      "entry": "/apps/file-convert/index.html"
+    },
+    {
+      "slug": "data-table",
+      "title": "数据表格",
+      "desc": "类电子表格的多人协作文档 · 字段视图与筛选",
+      "tags": [
+        "办公",
+        "表格"
+      ],
+      "zone": "办公区",
+      "group": "办公",
+      "entry": "/apps/data-table/index.html"
+    },
+    {
+      "slug": "lab-editor",
+      "title": "实验室平面编辑器",
+      "desc": "2D/3D 平面图与设备布置编辑器",
+      "tags": [
+        "工具",
+        "3D"
+      ],
+      "zone": "自研 / 工具",
+      "group": "自研 / 工具",
+      "entry": "/apps/lab-editor/index.html"
+    },
+    {
+      "slug": "lab-plan",
+      "title": "实验室平面图",
+      "desc": "平面图查看器（平移 / 缩放 / 设备清单）",
+      "tags": [
+        "工具",
+        "看图"
+      ],
+      "zone": "自研 / 工具",
+      "group": "自研 / 工具",
+      "entry": "/apps/lab-plan/index.html"
+    },
+    {
+      "slug": "game-design",
+      "title": "开放世界设计原型",
+      "desc": "开放世界玩法设计可玩原型 · 关卡与数值调试",
+      "tags": [
+        "工具",
+        "原型"
+      ],
+      "zone": "自研 / 工具",
+      "group": "自研 / 工具",
+      "entry": "/apps/game-design/index.html"
+    }
+  ]
+}

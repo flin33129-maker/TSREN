@@ -1,0 +1,17 @@
+{
+  "name": "deep-space-workstation",
+  "version": "1.1.0",
+  "private": true,
+  "description": "深空工作站（局域网文件/办公/AI/安全一体化）。零第三方依赖，Node 18+。",
+  "type": "commonjs",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "cli": "node cli.js",
+    "smoke": "node ops/smoke-r16.js",
+    "smoke:register": "node ops/smoke-r16.js --register"
+  }
+}
