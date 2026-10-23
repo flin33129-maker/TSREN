@@ -14,6 +14,7 @@
     "smoke": "node ops/smoke-r16.js",
     "smoke:register": "node ops/smoke-r16.js --register",
     "seed": "node ops/seed-demo.js",
-    "ui:probe": "node ops/ui-probe.js"
+    "ui:probe": "node ops/ui-probe.js",
+    "preview": "STATION_EMBED_OK=1 DATA_DIR=./data PORT=8081 node server.js"
   }
 }
