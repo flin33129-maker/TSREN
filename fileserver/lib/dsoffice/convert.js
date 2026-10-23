@@ -779,10 +779,107 @@ function pdfPageCount(buf) {
   }
 }
 
+/**
+ * 内置 PDF 文字抽取（没有 poppler 时的兜底）
+ *
+ * 能处理：未压缩流 + FlateDecode 流里的 Tj/TJ/'/" 文本操作，
+ * 以及大部分西文 PDF（简单字体 WinAnsi/MacRoman）。
+ * 明确不处理：Type0/Identity-H（中文、日文等 CID 字体，字符串是字形 ID，
+ * 没有内嵌 CMap 就无法还原成 Unicode）—— 这种情况返回 ok:false，
+ * 让上层给出「需要 poppler / OCR」的准确提示，而不是吐一串乱码。
+ */
+function pdfTextBuiltin(buf) {
+  try {
+    const latin = buf.toString('latin1');
+    if (/\/Subtype\s*\/Type0/.test(latin) && !/\/ToUnicode/.test(latin)) {
+      return { ok: false, text: '', chars: 0, error: '该 PDF 使用 CID 字体且未内嵌 ToUnicode 映射（常见于中文/扫描件），需要 poppler-utils 或 OCR' };
+    }
+    const chunks = [];
+    /* 逐个 stream 处理：/Filter 里含 FlateDecode 就解压 */
+    const re = /stream\r?\n/g;
+    let m;
+    while ((m = re.exec(latin))) {
+      const start = m.index + m[0].length;
+      const end = latin.indexOf('endstream', start);
+      if (end < 0) break;
+      const dictStart = Math.max(0, latin.lastIndexOf('<<', m.index));
+      const dict = latin.slice(dictStart, m.index);
+      const raw = buf.subarray(start, end);
+      let data = raw;
+      if (/FlateDecode/.test(dict)) {
+        try {
+          data = zlib.inflateSync(raw);
+        } catch (e) {
+          try { data = zlib.inflateRawSync(raw); } catch (e2) { data = null; }
+        }
+      }
+      if (data) chunks.push(data.toString('latin1'));
+      re.lastIndex = end + 9;
+    }
+    const text = chunks.map(extractFromContentStream).filter(Boolean).join('\n');
+    if (!text.trim()) return { ok: false, text: '', chars: 0, error: '未在该 PDF 中抽取到文字（可能是扫描件或图片型 PDF）' };
+    return { ok: true, text: text.replace(/\n{3,}/g, '\n\n').trim() };
+  } catch (e) {
+    return { ok: false, text: '', chars: 0, error: '内置 PDF 解析失败：' + (e && e.message || e) };
+  }
+}
+
+/** 从一段内容流里抽文本（BT…ET 之间的 Tj / TJ / ' / "） */
+function extractFromContentStream(stream) {
+  const lines = [];
+  let line = '';
+  const tokens = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\bT[dDmJj*]|\bET\b|[A-Za-z'"]+/g;
+  let m;
+  const decodePdfString = (raw) => {
+    let out = '';
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (ch !== '\\') { out += ch; continue; }
+      const nx = raw[++i];
+      if (nx === undefined) break;
+      if (nx === 'n') out += '\n';
+      else if (nx === 'r') out += '\r';
+      else if (nx === 't') out += '\t';
+      else if (nx === 'b' || nx === 'f') out += ' ';
+      else if (/[0-7]/.test(nx)) {
+        let oct = nx;
+        while (oct.length < 3 && /[0-7]/.test(raw[i + 1])) oct += raw[++i];
+        out += String.fromCharCode(parseInt(oct, 8));
+      } else if (nx === '\n') { /* 续行 */ }
+      else out += nx;
+    }
+    return out;
+  };
+  const decodeHex = (hex) => {
+    const clean = hex.replace(/[^0-9A-Fa-f]/g, '');
+    let out = '';
+    for (let i = 0; i + 1 < clean.length; i += 2) out += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16));
+    return out;
+  };
+  while ((m = tokens.exec(stream))) {
+    const t = m[0];
+    if (t[0] === '(') line += decodePdfString(t.slice(1, -1));
+    else if (t[0] === '<') line += decodeHex(t);
+    else if (t === 'Td' || t === 'TD' || t === 'T' || t === 'T*' || t === 'ET') {
+      if (line.trim()) lines.push(line);
+      line = '';
+    }
+    /* 其它操作符（Tf/Tj/TJ 等）不需要单独处理：
+       字面量字符串本身已经在上面被收集进 line */
+  }
+  if (line.trim()) lines.push(line);
+  return lines.join('\n');
+}
+
 /** PDF 抽文字 → Markdown */
 async function pdfToMarkdown(buf) {
   if (!has('pdftotext', ['-v'])) {
-    return { ok: false, text: '', chars: 0, error: '服务器未安装 poppler-utils（pdftotext），无法抽取 PDF 文字' };
+    /* 没装 poppler 不等于一定抽不出字：简单 PDF（未压缩/Flate + 西文字体）
+       用内置解析器就能拿到文字，比直接报错有用得多。 */
+    const built = pdfTextBuiltin(buf);
+    if (built.ok) return { ...built, engine: 'builtin' };
+    const hint = /poppler/i.test(built.error) ? '' : '（可安装 poppler-utils 提升成功率）';
+    return { ...built, engine: 'none', error: built.error + hint };
   }
   const os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dspdf-'));
@@ -794,7 +891,12 @@ async function pdfToMarkdown(buf) {
       execFile('pdftotext', ['-layout', '-enc', 'UTF-8', src, out], { timeout: 30000 }, (err) => (err ? reject(err) : resolve()));
     });
     const text = fs.readFileSync(out, 'utf8').replace(/\r/g, '').replace(/\n{4,}/g, '\n\n\n').trim();
-    return { ok: true, text, chars: text.length };
+    if (!text) {
+      /* poppler 也抽不出（扫描件）→ 再用内置解析试一次，都不行才认输 */
+      const built = pdfTextBuiltin(buf);
+      return built.ok ? { ...built, engine: 'builtin' } : { ok: false, text: '', chars: 0, engine: 'none', error: built.error };
+    }
+    return { ok: true, text, chars: text.length, engine: 'poppler' };
   } catch (e) {
     return { ok: false, text: '', chars: 0, error: 'PDF 文字抽取失败：' + (e && e.message || e) };
   } finally {
