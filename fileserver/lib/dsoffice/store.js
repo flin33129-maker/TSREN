@@ -131,6 +131,7 @@ class OfficeStore {
 
     this.index = Array.isArray(readJSON(this.indexFile, [])) ? readJSON(this.indexFile, []) : [];
     this.comments = readJSON(this.commentsFile, {}) || {};
+    this._normalizeComments();
     this.trash = Array.isArray(readJSON(this.trashFile, [])) ? readJSON(this.trashFile, []) : [];
     this.notifyList = Array.isArray(readJSON(this.notifyFile, [])) ? readJSON(this.notifyFile, []) : [];
     this._cache = new Map();      // id -> doc（热数据）
@@ -138,7 +139,74 @@ class OfficeStore {
     this._dirty = new Map();      // id -> doc
     this._metaTimer = null;
 
+    /* 索引写盘有 400ms 防抖（避免实时编辑时每个字符都写一次）。
+       问题：短命进程（CLI 工具、迁移脚本、部署钩子）在防抖窗口内就退出了，
+       索引会丢失 —— R16.1 用脚本铺示例数据时实测「文档在、列表空」。
+       这里挂一个 exit 钩子兜底：进程退出前把索引与未落盘内容刷出去。 */
+    OfficeStore._lastInstance = this;
+    if (!OfficeStore._exitHooked) {
+      OfficeStore._exitHooked = true;
+      process.on('exit', () => {
+        try { if (OfficeStore._lastInstance) OfficeStore._lastInstance.flushAll(); } catch (e) { /* 尽力 */ }
+      });
+    }
+
     try { this._migrateLegacy(); } catch (e) { /* 迁移失败不影响启动 */ }
+    try { this._reconcile(); } catch (e) { console.error('[office] 索引自检失败：', e.message); }
+  }
+
+  /**
+   * 索引自检：让 index.json / docs/ 目录 / 回收站三方对齐。
+   *
+   * 为什么需要：文档正文在 docs/<id>.json，索引在 index.json，两边是分开写的。
+   * 进程被 kill、磁盘写满、手工改过数据目录之后，就会出现
+   *   ① 索引里列着文档，但正文文件没了 → 列表点进去空白，删也删不掉；
+   *   ② docs/ 里有正文，索引里却没有 → 文件"消失"，占着空间。
+   * 以前这两种都要人工收拾，这里启动时自愈：
+   *   ① 的条目直接摘掉（正文没法恢复，留着只会一直报错）；
+   *   ② 的正文按自身 id 重新挂回索引。
+   * 只做增删索引，不删除任何用户数据；结果会打到日志里。
+   */
+  _reconcile() {
+    const fs = require('fs');
+    let dropped = 0;
+    let adopted = 0;
+    const alive = [];
+    for (const item of this.index) {
+      if (!item || !item.id) { dropped++; continue; }
+      const file = this._docFile(item.id);
+      if (fs.existsSync(file) || this._dirty.has(item.id)) { alive.push(item); continue; }
+      dropped++;
+    }
+    const known = new Set(alive.map((x) => x.id));
+    let files = [];
+    try { files = fs.readdirSync(this.docsDir); } catch (e) { files = []; }
+    for (const f of files) {
+      if (!/\.json$/.test(f)) continue;
+      const id = f.replace(/\.json$/, '');
+      if (known.has(id)) continue;
+      const doc = readJSON(path.join(this.docsDir, f), null);
+      if (!doc || doc.id !== id) continue;
+      doc.content = doc.content && typeof doc.content === 'object' ? doc.content : defaultContent(doc.kind);
+      alive.push(this.metaOf(doc));
+      known.add(id);
+      this._cache.set(id, doc);
+      adopted++;
+    }
+    /* 回收站里指向不存在的正文，也只是噪声（保留条目，但标记一下便于排查） */
+    try {
+      const trashIds = new Set(this.trash.map((x) => x && x.id));
+      for (const key of Object.keys(this.comments)) {
+        if (known.has(key) || trashIds.has(key)) continue;
+        delete this.comments[key];
+      }
+    } catch (e) { /* 忽略 */ }
+
+    if (dropped || adopted) {
+      this.index = alive;
+      this._saveIndexNow();
+      console.log('[office] 索引自检：摘掉 ' + dropped + ' 条无正文的条目，找回 ' + adopted + ' 篇游离文档');
+    }
   }
 
   /* ───────────────────────────── 索引 / 落盘 ───────────────────────────── */
@@ -500,10 +568,63 @@ class OfficeStore {
     return { ok: true, doc, restoredFrom: Number(rev) };
   }
 
+  /** 把历史评论记录补齐成前端能渲染的形状（幂等） */
+  _normalizeComments() {
+    let touched = false;
+    for (const key of Object.keys(this.comments)) {
+      const list = this.comments[key];
+      if (!Array.isArray(list)) { delete this.comments[key]; touched = true; continue; }
+      for (const c of list) {
+        if (!c.cid) { c.cid = rid('c'); touched = true; }
+        if (!c.id) { c.id = c.cid; touched = true; }
+        if (!c.user) { c.user = c.by || '匿名'; touched = true; }
+        if (!c.at) { c.at = Date.now(); touched = true; }
+        if (c.resolved === undefined) { c.resolved = false; touched = true; }
+        if (!Array.isArray(c.mentions)) { c.mentions = []; touched = true; }
+      }
+    }
+    if (touched) {
+      try { writeJSONAtomic(this.commentsFile, this.comments); } catch (e) { /* 忽略 */ }
+    }
+  }
+
   /* ───────────────────────────── 评论 ───────────────────────────── */
 
+  /**
+   * 评论的**对外形状必须与前端一致**：
+   *   { id, user, text, at, resolved, replies: [{id,user,at,text}] }
+   * 前端评论面板直接读 c.user.slice(0,1)、c.replies.map(...)，
+   * 少一个字段就是整页渲染崩溃（R16.1 用 jsdom 跑真前端时实测到）。
+   * 存储内部仍保留 parent/cid 以支持回复链路。
+   */
+  _toPublicComment(c, all) {
+    const replies = all
+      .filter((x) => x.parent === c.cid || x.parent === c.id)
+      .sort((a, b) => a.at - b.at)
+      .map((x) => ({ id: x.id, user: x.user, at: x.at, text: x.text }));
+    return {
+      /* 老数据（上一版存的是 {cid,by,...}）也要能渲染：字段缺失就补默认值，
+         前端是 `c.user.slice(0,1)`，undefined 会直接崩整页。 */
+      id: c.id || c.cid,
+      cid: c.cid || c.id,
+      user: c.user || c.by || '匿名',
+      text: c.text,
+      at: c.at,
+      resolved: !!c.resolved,
+      resolvedBy: c.resolvedBy || null,
+      mentions: c.mentions || [],
+      parent: c.parent || null,
+      replies,
+    };
+  }
+
   commentsOf(id) {
-    return (this.comments[String(id || '')] || []).slice().sort((a, b) => a.at - b.at);
+    const all = (this.comments[String(id || '')] || []).slice().sort((a, b) => a.at - b.at);
+    // 顶层 = 没有被回复指向的评论（parent 为空或父评论已不存在）
+    const ids = new Set(all.flatMap((c) => [c.cid, c.id]).filter(Boolean));
+    return all
+      .filter((c) => !c.parent || !ids.has(c.parent))
+      .map((c) => this._toPublicComment(c, all));
   }
 
   addComment(user, id, opts) {
@@ -512,10 +633,14 @@ class OfficeStore {
     const o = opts || {};
     const text = clean(o.text, MAX_COMMENT).trim();
     if (!text) return { ok: false, error: '评论内容不能为空' };
+    const name = safeUser(user && user.username);
     const list = this.comments[key] || (this.comments[key] = []);
+    const cid = rid('c');
     const c = {
-      cid: rid('c'),
-      by: safeUser(user && user.username),
+      cid,
+      id: cid,
+      user: name,
+      by: name,
       text,
       parent: o.parent ? String(o.parent).slice(0, 40) : null,
       mentions: Array.isArray(o.mentions) ? o.mentions.map((x) => clean(x, 40)).slice(0, 20) : [],
@@ -525,30 +650,30 @@ class OfficeStore {
     };
     list.push(c);
     try { writeJSONAtomic(this.commentsFile, this.comments); } catch (e) { /* 忽略 */ }
-    return { ok: true, comment: c };
+    return { ok: true, comment: this._toPublicComment(c, list) };
   }
 
   resolveComment(id, cid, resolved) {
     const list = this.comments[String(id || '')] || [];
-    const c = list.find((x) => x.cid === String(cid || ''));
+    const c = list.find((x) => x.cid === String(cid || '') || x.id === String(cid || ''));
     if (!c) return { ok: false, error: '评论不存在' };
     c.resolved = !!resolved;
     c.resolvedBy = c.resolved ? 'self' : null;
     try { writeJSONAtomic(this.commentsFile, this.comments); } catch (e) { /* 忽略 */ }
-    return { ok: true, comment: c };
+    return { ok: true, comment: this._toPublicComment(c, list) };
   }
 
   deleteComment(id, cid, user) {
     const key = String(id || '');
     const list = this.comments[key] || [];
-    const i = list.findIndex((x) => x.cid === String(cid || ''));
+    const target = String(cid || '');
+    const i = list.findIndex((x) => x.cid === target || x.id === target);
     if (i < 0) return { ok: false, error: '评论不存在' };
     const c = list[i];
     const isAdmin = !!(user && user.role === 'admin');
-    if (!isAdmin && c.by !== safeUser(user && user.username)) return { ok: false, error: '只能删除自己的评论' };
-    list.splice(i, 1);
-    // 连带删除它下面的回复
-    this.comments[key] = list.filter((x) => x.parent !== c.cid);
+    const me = safeUser(user && user.username);
+    if (!isAdmin && c.user !== me) return { ok: false, error: '只能删除自己的评论' };
+    this.comments[key] = list.filter((x) => x.cid !== c.cid && x.parent !== c.cid && x.parent !== c.id);
     try { writeJSONAtomic(this.commentsFile, this.comments); } catch (e) { /* 忽略 */ }
     return { ok: true };
   }

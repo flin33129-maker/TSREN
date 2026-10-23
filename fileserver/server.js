@@ -532,12 +532,35 @@ class FileServer {
     return this.users.findById(s.userId) || null;
   }
 
-  setSessionCookie(res, sid) {
+  /**
+   * 会话 Cookie。
+   *
+   * R16.1：默认仍是 `SameSite=Lax`（CSRF 防线之一）。只有同时满足
+   *   ① 设了 STATION_EMBED_OK=1（演示/预览模式）
+   *   ② 这次请求确实走的是 https（TLS 或反代 X-Forwarded-Proto）
+   * 才放宽成 `SameSite=None; Secure` —— 因为嵌入到别的站点（iframe）里时，
+   * Lax 的 Cookie 不会被带上，登录会「看似成功、刷新即掉」。
+   * 这个开关刻意只在演示环境开，正式部署不要加。
+   */
+  _embedMode() {
+    return /^(1|true|yes|on)$/i.test(String(process.env.STATION_EMBED_OK || ''));
+  }
+
+  _isHttpsReq(req) {
+    if (this.cfg.tls) return true;
+    const proto = String((req && req.headers && req.headers['x-forwarded-proto']) || '').split(',')[0].trim().toLowerCase();
+    return proto === 'https';
+  }
+
+  setSessionCookie(res, sid, req) {
     const maxAge = 7 * 24 * 3600;
     /* R1-1-7：TLS 模式下补 Secure，防止 cookie 经 http:// 明文旁路泄漏 */
-    const secure = this.cfg.tls ? '; Secure' : '';
+    const https = this._isHttpsReq(req);
+    const crossSite = this._embedMode() && https;
+    const secure = https ? '; Secure' : '';
+    const sameSite = crossSite ? 'None' : 'Lax';
     res.setHeader('Set-Cookie',
-      `${this.cfg.sessionCookie}=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`);
+      `${this.cfg.sessionCookie}=${sid}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAge}${secure}`);
   }
 
   clearSessionCookie(req, res) {
@@ -1819,7 +1842,7 @@ class FileServer {
         console.warn('[smb] 注册时开通共享异常：' + (e && e.message));
       }
       const s = this.sessions.create(r.user.id);
-      this.setSessionCookie(res, s.id);
+      this.setSessionCookie(res, s.id, req);
       return sendJSON(res, 200, {
         ok: true,
         user: this.users.publicUser(r.user),
@@ -1895,7 +1918,7 @@ class FileServer {
       }
       this.audit({ userObj: u, action: 'login', ip: req.socket.remoteAddress });
       const s = this.sessions.create(u.id);
-      this.setSessionCookie(res, s.id);
+      this.setSessionCookie(res, s.id, req);
       return sendJSON(res, 200, { ok: true, user: this.users.publicUser(u) });
     }
 
@@ -5353,10 +5376,16 @@ class FileServer {
          完整 CSP（script-src 哈希/nonce）需要前端源码来算，
          而 public/index.html 是构建产物、源码不在仓库里 → 本轮不做。 */
       try {
+        const embedOk = /^(1|true|yes|on)$/i.test(String(process.env.STATION_EMBED_OK || ''));
         res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        /* 默认禁止被别的站点 iframe 嵌入（点击劫持防线）。
+           演示/预览时（STATION_EMBED_OK=1）改为「允许被嵌入」：
+           平台会把站点放进跨域 iframe，SAMEORIGIN 会让预览直接白屏。
+           正式部署请勿设置该变量。 */
+        if (!embedOk) res.setHeader('X-Frame-Options', 'SAMEORIGIN');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-        res.setHeader('Content-Security-Policy', "object-src 'none'; base-uri 'self'");
+        res.setHeader('Content-Security-Policy',
+          "object-src 'none'; base-uri 'self'" + (embedOk ? '; frame-ancestors *' : ''));
       } catch (e) { /* 头写不进去不影响主流程 */ }
       try {
         const r = this.handle(req, res);

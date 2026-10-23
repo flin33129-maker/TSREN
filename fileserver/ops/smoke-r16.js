@@ -132,6 +132,12 @@ async function stepOffice() {
 
   r = await req('/api/office/capability');
   ok(r.code === 200 && r.j && r.j.matrix, '导出能力矩阵');
+  /* 前端「导入/导出」弹窗读的是 matrix.export[fmt]；
+     少了这一层会让办公页直接渲染崩溃（R16.1 实测）。 */
+  ok(r.j && r.j.matrix && r.j.matrix.export && typeof r.j.matrix.export.docx === 'boolean'
+    || (r.j && r.j.matrix && r.j.matrix.export && r.j.matrix.export.docx === 'image-only'),
+    '能力矩阵含 export 子表（前端依赖）', r.j && r.j.matrix);
+  ok(r.j && r.j.matrix && r.j.matrix.export && r.j.matrix.export.docx === true, 'docx 导出可用');
 
   r = await req('/api/office/templates');
   ok(r.code === 200 && (r.j.items || []).length >= 10, '模板库');

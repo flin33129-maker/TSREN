@@ -363,7 +363,14 @@ module.exports = {
       return true;
     }
     if (pathname === '/api/office/capability' && method === 'GET') {
-      json(res, 200, { ok: true, matrix: convert.capability(), kinds: ['doc', 'sheet', 'board', 'mind', 'note', 'slide', 'flow', 'form', 'poster', 'pdf', 'image'], formats: Object.keys(convert.MIME) }, ctx);
+      const cap = convert.capability();
+      json(res, 200, {
+        ok: true,
+        matrix: cap,
+        engines: cap.engines,
+        kinds: ['doc', 'sheet', 'board', 'mind', 'note', 'slide', 'flow', 'form', 'poster', 'pdf', 'image'],
+        formats: Object.keys(convert.MIME),
+      }, ctx);
       return true;
     }
 

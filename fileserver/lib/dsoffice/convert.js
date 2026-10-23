@@ -71,18 +71,50 @@ function has(bin, args) {
 /* ───────────────────────────── 能力探测 ───────────────────────────── */
 
 let _cap = null;
+/**
+ * 能力矩阵。
+ *
+ * **返回结构必须和前端对得上**：public/app 的「导入 / 导出」弹窗读的是
+ *   matrix.export[fmt] → true | 'image-only' | false
+ * 少了 export 这一层，前端 `A.export[C]` 直接 TypeError，整个办公页白屏
+ * （R16 用 jsdom 跑真前端时踩到的，不是猜的）。
+ * 所以这里同时给出：engines（探测明细，供设置页/诊断展示）
+ *                 import / export（前端消费的扁平矩阵）
+ */
 function capability() {
   if (_cap) return _cap;
   const soffice = ['soffice', 'libreoffice'].some((b) => has(b, ['--version']));
   const magick = has('magick', ['-version']) || has('convert', ['-version']);
   const pdftotext = has('pdftotext', ['-v']);
   const pdftoppm = has('pdftoppm', ['-v']);
-  _cap = {
+  const engines = {
     soffice: { ok: soffice, note: soffice ? '可用：docx/xlsx/pptx/pdf 高质量转换' : '未安装：Office 格式改用内置生成器' },
     imagemagick: { ok: magick, note: magick ? '可用：图片格式互转' : '未安装：图片只能原样导出' },
     pdftotext: { ok: pdftotext, note: pdftotext ? '可用：PDF 抽文字' : '未安装：使用内置解析器（扫描件无效）' },
     pdftoppm: { ok: pdftoppm, note: pdftoppm ? '可用：PDF 封面缩略图' : '未安装：PDF 缩略图不可用' },
     builtin: { ok: true, note: '内置零依赖导出：md/txt/html/csv/json/docx/xlsx/pdf' },
+  };
+  const importMatrix = {
+    docx: true, xlsx: true, xlsm: true, csv: true, tsv: true,
+    md: true, markdown: true, txt: true, html: true, htm: true, json: true,
+    pdf: true, image: true,
+    png: true, jpg: true, jpeg: true, gif: true, webp: true, bmp: true,
+  };
+  const exportMatrix = {
+    docx: true, xlsx: true, md: true, markdown: true, txt: true, html: true, json: true,
+    csv: true, tsv: true,
+    pdf: true,                                  // 内置排版始终可用，装了 soffice 自动升级
+    pptx: soffice ? true : false,               // 只有 LibreOffice 能写 pptx
+    png: 'image-only', jpg: 'image-only',
+    webp: magick ? 'image-only' : false,
+    gif: magick ? 'image-only' : false,
+  };
+  _cap = {
+    engines,
+    import: importMatrix,
+    export: exportMatrix,
+    /* 兼容旧字段：直接读 matrix.soffice.ok 的调用方还能用 */
+    ...engines,
   };
   return _cap;
 }
